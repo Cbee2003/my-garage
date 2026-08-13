@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#101820">
+<title>My Garage</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f4f5f7;color:#151b22;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+header{background:#101820;color:white;padding:18px 18px 14px;position:sticky;top:0;z-index:20}
+header h1{margin:0;font-size:25px}header p{margin:4px 0 0;color:#b9c3cc;font-size:13px}
+main{max-width:760px;margin:auto;padding:14px 14px 90px}.screen{display:none}.screen.active{display:block}
+.card{background:white;border-radius:18px;padding:16px;margin-bottom:13px;box-shadow:0 2px 12px #0000000b;border:1px solid #e6e9ed}
+h2{font-size:20px;margin:3px 0 14px}h3{margin:0 0 5px;font-size:16px}.muted{color:#697586;font-size:13px}
+.stats{display:grid;grid-template-columns:repeat(2,1fr);gap:9px}.stat{background:#f7f8fa;padding:13px;border-radius:13px}.stat b{display:block;font-size:22px;margin-top:3px}
+button{border:0;border-radius:11px;padding:11px 13px;font-weight:700;background:#1769aa;color:#fff;margin:3px;cursor:pointer}.secondary{background:#e9edf1;color:#18212b}.danger{background:#b42318}.green{background:#087443}.orange{background:#b54708}
+input,select,textarea{width:100%;padding:11px;border:1px solid #d9dee4;border-radius:10px;margin:5px 0 11px;font:inherit}label{font-size:13px;font-weight:700}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:9px}.item{border-top:1px solid #e7eaee;padding:12px 0}.item:first-child{border-top:0}.actions{display:flex;flex-wrap:wrap;gap:3px}
+.pill{display:inline-block;padding:4px 8px;border-radius:99px;background:#e9f0f6;font-size:11px;font-weight:700}.due{background:#fff0e5;color:#9a4105}.over{background:#fde8e7;color:#9b1c12}.ok{background:#e6f5ed;color:#087443}
+.vehicle{display:flex;align-items:center;gap:12px;cursor:pointer}.vehicleIcon{width:58px;height:58px;border-radius:14px;background:#e8eef3;display:grid;place-items:center;font-size:27px}
+.bar{height:8px;background:#e7eaee;border-radius:99px;overflow:hidden}.bar i{display:block;height:100%;background:#1769aa}.empty{text-align:center;padding:25px;color:#697586}
+nav{position:fixed;bottom:0;left:0;right:0;background:white;border-top:1px solid #ddd;display:flex;justify-content:center;z-index:30;padding:7px 4px calc(7px + env(safe-area-inset-bottom))}
+nav button{flex:1;max-width:180px;background:transparent;color:#697586;margin:0;font-size:11px}nav button.active{color:#1769aa;background:#edf5fb}
+.modal{position:fixed;inset:0;background:#0008;display:none;align-items:flex-end;z-index:50}.modal.show{display:flex}.sheet{background:white;width:100%;max-width:760px;margin:auto;border-radius:20px 20px 0 0;padding:18px;max-height:90vh;overflow:auto}
+.photo{max-width:100%;max-height:190px;border-radius:12px;margin:6px 0}.receipt{font-size:12px}
+@media(min-width:700px){.sheet{border-radius:20px;margin-bottom:30px}.stats{grid-template-columns:repeat(4,1fr)}}
+</style>
+</head>
+<body>
+<header><h1>🚗 My Garage</h1><p id="subtitle">Keep every vehicle, repair and service in one place.</p></header>
+<main>
+<section id="home" class="screen active"></section>
+<section id="vehicles" class="screen"></section>
+<section id="maintenance" class="screen"></section>
+<section id="shopping" class="screen"></section>
+</main>
+
+<nav>
+<button id="n-home" class="active" onclick="go('home')">🏠<br>Home</button>
+<button id="n-vehicles" onclick="go('vehicles')">🚗<br>Vehicles</button>
+<button id="n-maintenance" onclick="go('maintenance')">🛠️<br>Service</button>
+<button id="n-shopping" onclick="go('shopping')">🛒<br>Parts</button>
+</nav>
+
+<div id="modal" class="modal"><div class="sheet" id="sheet"></div></div>
+
+<script>
+const KEY='myGarageAppV3';
+let db=JSON.parse(localStorage.getItem(KEY)||'{"vehicles":[]}');
+let activeVehicle=null;
+const schedules=[
+ ['Oil & Filter Change',5000,6],['Tire Rotation',6000,6],['Brake Inspection',10000,12],
+ ['Cabin Air Filter',15000,12],['Engine Air Filter',30000,24],['Coolant Service',30000,24],
+ ['Transmission Service',60000,48],['Battery Check',12000,12]
+];
+function save(){localStorage.setItem(KEY,JSON.stringify(db));render()}
+function esc(x){return String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function money(x){return Number(x||0).toLocaleString('en-US',{style:'currency',currency:'USD'})}
+function name(v){return `${v.year||''} ${v.make||''} ${v.model||''}`.trim()||'Unnamed Vehicle'}
+function costs(v){return [...(v.repairs||[]),...(v.parts||[]),...(v.maintenance||[])].reduce((a,x)=>a+Number(x.cost||0),0)}
+function go(id){document.querySelectorAll('.screen').forEach(x=>x.classList.remove('active'));document.getElementById(id).classList.add('active');document.querySelectorAll('nav button').forEach(x=>x.classList.remove('active'));document.getElementById('n-'+id).classList.add('active');render()}
+function due(v){
+ return schedules.map(s=>{let logs=(v.maintenance||[]).filter(x=>(x.type||x.name)===s[0]).sort((a,b)=>String(b.date).localeCompare(String(a.date)));let last=logs[0], base=last?Number(last.miles||0):Number(v.startMiles||0), next=base+s[1];let date='';if(last?.date){let d=new Date(last.date);d.setMonth(d.getMonth()+s[2]);date=d.toISOString().slice(0,10)}let miles=Number(v.miles||0),isDue=miles>=next-500||(date&&new Date(date)<=new Date()),over=miles>=next+1||(date&&new Date(date)<new Date());return{name:s[0],next,date,isDue,over}}).filter(x=>x.isDue)}
+function render(){home();vehicles();maintenance();shopping()}
+function home(){
+ let total=db.vehicles.reduce((a,v)=>a+costs(v),0),open=db.vehicles.reduce((a,v)=>a+(v.repairs||[]).filter(x=>x.status!=='Completed').length,0),alerts=db.vehicles.flatMap(v=>due(v));
+ document.getElementById('home').innerHTML=`<div class="card"><h2>Garage at a glance</h2><div class="stats">
+ <div class="stat"><span class="muted">Vehicles</span><b>${db.vehicles.length}</b></div><div class="stat"><span class="muted">Spent</span><b>${money(total)}</b></div><div class="stat"><span class="muted">Open Repairs</span><b>${open}</b></div><div class="stat"><span class="muted">Alerts</span><b>${alerts.length}</b></div></div></div>
+ <div class="card"><h2>Needs Attention</h2>${alerts.length?alerts.slice(0,8).map(a=>`<div class="item"><span class="pill ${a.over?'over':'due'}">${a.over?'OVERDUE':'DUE SOON'}</span> <b>${esc(a.name)}</b><div class="muted">${esc(findVehicleForAlert(a))}</div></div>`).join(''):'<div class="empty">🎉 Everything looks current.</div>'}</div>
+ <div class="card"><h2>Your Vehicles</h2>${db.vehicles.length?db.vehicles.map(v=>vehicleRow(v)).join(''):'<div class="empty">Add your first vehicle.</div>'}<button onclick="vehicleForm()">+ Add Vehicle</button></div>`;
+}
+function findVehicleForAlert(a){let v=db.vehicles.find(v=>due(v).some(x=>x.name===a.name));return v?name(v):''}
+function vehicleRow(v){return `<div class="item vehicle" onclick="detail('${v.id}')"><div class="vehicleIcon">🚘</div><div style="flex:1"><h3>${esc(name(v))}</h3><div class="muted">${esc(v.nickname||'')} ${v.miles?'• '+Number(v.miles).toLocaleString()+' mi':''}</div><div class="muted">${money(costs(v))} total recorded</div></div><span>›</span></div>`}
+function vehicles(){
+ document.getElementById('vehicles').innerHTML=`<div class="card"><h2>Vehicles</h2>${db.vehicles.length?db.vehicles.map(v=>`<div class="item">${vehicleRow(v)}<div class="actions"><button onclick="detail('${v.id}')">Open</button><button class="secondary" onclick="vehicleForm('${v.id}')">Edit</button><button class="danger" onclick="del('${v.id}')">Delete</button></div></div>`).join(''):'<div class="empty">No vehicles yet.</div>'}<button onclick="vehicleForm()">+ Add Vehicle</button></div>`;
+}
+function maintenance(){
+ document.getElementById('maintenance').innerHTML=`<div class="card"><h2>Maintenance</h2><p class="muted">Mileage and time-based reminders for each vehicle.</p>${db.vehicles.map(v=>`<div class="item"><h3>${esc(name(v))}</h3><div class="muted">Current: ${Number(v.miles||0).toLocaleString()} miles</div>${schedules.map((s,i)=>{let r=due(v).find(x=>x.name===s[0]);let last=(v.maintenance||[]).filter(x=>(x.type||x.name)===s[0]).sort((a,b)=>String(b.date).localeCompare(String(a.date)))[0];return `<div class="item"><b>${esc(s[0])}</b> ${r?`<span class="pill ${r.over?'over':'due'}">${r.over?'OVERDUE':'DUE SOON'}</span>`:'<span class="pill ok">OK</span>'}<div class="muted">Every ${s[1].toLocaleString()} miles / ${s[2]} months ${last?'• Last: '+esc(last.date):''}</div><button onclick="logService('${v.id}',${i})">Log Service</button></div>`}).join('')}</div>`).join('')||'<div class="empty">Add a vehicle first.</div>'}</div>`;
+}
+function shopping(){
+ let rows=[];db.vehicles.forEach(v=>(v.parts||[]).forEach((p,i)=>{if(p.status!=='Purchased'&&p.status!=='Installed')rows.push({v,p,i})}));
+ document.getElementById('shopping').innerHTML=`<div class="card"><h2>🛒 Parts Shopping List</h2>${rows.length?rows.map(r=>`<div class="item"><h3>${esc(r.p.name)}</h3><span class="pill orange">${esc(name(r.v))}</span><div class="muted">${esc(r.p.notes||'')} ${r.p.cost?'• Est. '+money(r.p.cost):''}</div><button class="green" onclick="purchase('${r.v.id}',${r.i})">Mark Purchased</button></div>`).join(''):'<div class="empty">Your parts list is empty 🎉</div>'}</div>`;
+}
+function modal(html){sheet.innerHTML=html;modalEl=document.getElementById('modal');modalEl.classList.add('show')}
+function closeModal(){document.getElementById('modal').classList.remove('show')}
+function vehicleForm(id=''){let v=id?db.vehicles.find(x=>x.id===id):null;modal(`<h2>${v?'Edit':'Add'} Vehicle</h2><div class="row"><div><label>Year</label><input id="fyear" type="number" value="${v?.year||''}"></div><div><label>Make</label><input id="fmake" value="${esc(v?.make||'')}"></div></div><div class="row"><div><label>Model</label><input id="fmodel" value="${esc(v?.model||'')}"></div><div><label>Nickname</label><input id="fnick" value="${esc(v?.nickname||'')}"></div></div><div class="row"><div><label>Current Mileage</label><input id="fmiles" type="number" value="${v?.miles||''}"></div><div><label>VIN</label><input id="fvin" value="${esc(v?.vin||'')}"></div></div><label>Purchase / Start Date</label><input id="fdate" type="date" value="${v?.purchaseDate||''}"><div class="actions"><button onclick="saveVehicle('${id}')">Save Vehicle</button><button class="secondary" onclick="closeModal()">Cancel</button></div>`)}
+function saveVehicle(id){let v=id?db.vehicles.find(x=>x.id===id):{id:crypto.randomUUID(),repairs:[],parts:[],maintenance:[],startMiles:Number(fmiles.value||0)};Object.assign(v,{year:fyear.value,make:fmake.value,model:fmodel.value,nickname:fnick.value,miles:Number(fmiles.value||0),vin:fvin.value,purchaseDate:fdate.value});if(!id)db.vehicles.push(v);closeModal();save()}
+function del(id){if(confirm('Delete this vehicle and all its records?')){db.vehicles=db.vehicles.filter(v=>v.id!==id);save()}}
+function detail(id){activeVehicle=id;let v=db.vehicles.find(x=>x.id===id);modal(`<h2>${esc(name(v))}</h2><div class="stats"><div class="stat"><span class="muted">Total Spent</span><b>${money(costs(v))}</b></div><div class="stat"><span class="muted">Repairs</span><b>${money((v.repairs||[]).reduce((a,x)=>a+Number(x.cost||0),0))}</b></div><div class="stat"><span class="muted">Parts</span><b>${money((v.parts||[]).reduce((a,x)=>a+Number(x.cost||0),0))}</b></div><div class="stat"><span class="muted">Service</span><b>${money((v.maintenance||[]).reduce((a,x)=>a+Number(x.cost||0),0))}</b></div></div><p><b>${Number(v.miles||0).toLocaleString()}</b> miles ${v.vin?'• VIN '+esc(v.vin):''}</p><button onclick="add('${id}','repairs')">+ Repair</button><button onclick="add('${id}','parts')">+ Part</button><button onclick="add('${id}','maintenance')">+ Maintenance</button><h3 style="margin-top:16px">Records</h3>${[...(v.repairs||[]),...(v.parts||[]),...(v.maintenance||[])].sort((a,b)=>String(b.date).localeCompare(String(a.date))).map(x=>`<div class="item"><b>${esc(x.name||x.type)}</b> <span class="pill ${x.status==='Completed'||x.status==='Purchased'?'ok':'due'}">${esc(x.status||'Logged')}</span><div class="muted">${esc(x.date||'')} ${x.miles?'• '+Number(x.miles).toLocaleString()+' mi':''} ${x.cost?'• '+money(x.cost):''}</div><div>${esc(x.notes||'')}</div>${x.photo?`<img class="photo" src="${x.photo}">`:''}</div>`).join('')||'<div class="empty">No records yet.</div>'}`)}
+function add(id,key){let v=db.vehicles.find(x=>x.id===id),title=key==='maintenance'?'Service performed':key==='parts'?'Part needed':'Repair needed';modal(`<h2>Add ${title}</h2><label>${title}</label><input id="aname"><label>Cost</label><input id="acost" type="number" step="0.01"><label>Notes</label><textarea id="anotes"></textarea><label>Receipt/photo (optional)</label><input id="afile" type="file" accept="image/*"><div class="actions"><button onclick="saveRecord('${id}','${key}')">Save</button><button class="secondary" onclick="closeModal()">Cancel</button></div>`)}
+function saveRecord(id,key){let v=db.vehicles.find(x=>x.id===id),file=afile.files[0];let finish=photo=>{let x={name:aname.value,cost:Number(acost.value||0),notes:anotes.value,date:new Date().toISOString().slice(0,10),miles:v.miles||0,status:key==='maintenance'?'Completed':'Required',photo:photo||''};if(key==='maintenance')x.type=x.name;v[key].push(x);closeModal();save();detail(id)};if(file){let r=new FileReader();r.onload=()=>finish(r.result);r.readAsDataURL(file)}else finish('')}
+function purchase(id,i){let v=db.vehicles.find(x=>x.id===id);v.parts[i].status='Purchased';save()}
+function logService(id,i){let v=db.vehicles.find(x=>x.id===id),s=schedules[i];modal(`<h2>Log ${esc(s[0])}</h2><label>Actual cost</label><input id="scost" type="number" step="0.01"><label>Notes</label><textarea id="snotes">Scheduled maintenance</textarea><div class="actions"><button onclick="saveService('${id}',${i})">Log Service</button><button class="secondary" onclick="closeModal()">Cancel</button></div>`)}
+function saveService(id,i){let v=db.vehicles.find(x=>x.id===id),s=schedules[i];v.maintenance.push({name:s[0],type:s[0],cost:Number(scost.value||0),notes:snotes.value,date:new Date().toISOString().slice(0,10),miles:v.miles||0,status:'Completed'});closeModal();save()}
+function backup(){let a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(db,null,2)],{type:'application/json'}));a.download='my-garage-backup.json';a.click()}
+render();
+</script></body></html>
